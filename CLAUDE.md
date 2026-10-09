@@ -58,12 +58,14 @@ So the registry is behind a trait:
   `TweakList` owns the page's tweaks (state lifted up): sections, "X of N active",
   Apply all / Revert all (sequential, per-row errors). `TweakRow` only displays.
   Every toggle and Apply all / Revert all show a `Toast` (bottom-right): spinner + progress
-  while Apply all runs, then "<name> applied" / "X tweaks applied" + "Please restart your PC
-  to see the full changes" (only if a tweak isn't `TweakInfo.live`), or a warning if some
-  failed. Closes after 5 s (CSS countdown, paused on hover). `key={report.run}` = new toast per run.
+  while Apply all runs, then "<name> applied" / "X tweaks applied" + text based on
+  `TweakInfo.effect`: any "signout" -> "Please restart your PC to see the full changes";
+  only "explorer" -> a **Restart Explorer** button (`restart_explorer` command); all "now" ->
+  "All changes are active now". Warning if some failed. Closes after 5 s (10 s while the
+  button waits; CSS countdown, paused on hover/focus/restart). `key={report.run}` = new toast per run.
   Dashboard: CPU, RAM, active tweaks (`tweak_summary`) tiles.
 - `src/App.css`: "Crimson" theme using CSS variables in `:root`
-  (`--bg`, `--panel`, `--line`, `--hover`, `--accent`, `--text`, `--muted`).
+  (`--bg`, `--panel`, `--line`, `--hover`, `--accent`, `--text`, `--muted`, `--warn`).
 - `src-tauri/src/backups.rs`: backups are saved to `backups.json` in Tauri's app data
   folder (written before the registry is touched, atomic temp-file + rename) and loaded
   at startup in `.setup()`. A corrupt file is moved to `backups.json.broken`.
@@ -72,19 +74,37 @@ So the registry is behind a trait:
   Each `Tweak` has a `section` (heading on its page). Tweak IDs must never change:
   backups.json is keyed by ID (that's why "Disable Game Bar Capture" has id `game_dvr_off`).
   Full triage of planned/dropped tweaks: ROADMAP.md.
-- One `key` per tweak. A tweak that needs values under two keys needs a refactor first.
-- `src-tauri/src/live.rs`: makes 8 tweaks take effect right away via `SystemParametersInfo`
-  (`windows-sys` 0.61): mouse accel, hover time, sticky/filter/toggle keys shortcut,
-  keyboard delay, window animations, menu delay. A tweak opts in with `live: Some(Live::X)`.
-  `push_live()` in lib.rs runs after apply and revert, reads the values back from the
-  registry and pushes them; best effort (failure only prints, sign-out still works).
-  Accessibility tweaks only change bit 0x4 of the live Flags. The other 25 tweaks still
-  need sign-out or an Explorer restart. On macOS it prints `[fake live] ...`.
+- One `key` per tweak. A tweak that needs values under two keys needs a refactor first
+  (not done yet: no tweak needs it). Backups store values by name only, so value names
+  must be unique within a tweak, and never add a value to an existing tweak (old backups
+  wouldn't have it): make a new tweak with a new ID instead.
+- Each `Tweak` has `effect` (when it shows up) and `windows` (which versions):
+  - `Now(Live::X)` (8): `src-tauri/src/live.rs` pushes it live via `SystemParametersInfo`
+    (`windows-sys` 0.61): mouse accel, hover time, sticky/filter/toggle keys shortcut,
+    keyboard delay, window animations, menu delay. `push_live()` in lib.rs runs after apply
+    and revert, reads the values back from the registry; best effort (failure only prints).
+    Accessibility tweaks only change bit 0x4 of the live Flags.
+  - `Explorer` (7): taskbar search, Task View, file extensions, hidden files, Snap Assist,
+    Shake, Peek. Best guess, still to confirm on Windows. `src-tauri/src/explorer.rs`:
+    `taskkill /f /im explorer.exe`, waits for the taskbar (`Shell_TrayWnd`) to come back,
+    starts `explorer.exe` itself if Windows doesn't within 3 s.
+  - `SignOut` (18): everything else.
+  - `windows: Win10` (start_suggestions_off) / `Win11` (start_recommendations_off) / `Any`.
+    `visible()` hides a tweak on the other version, unless it has a backup (so it can
+    always be reverted). Build number via `sysinfo::System::kernel_version()`;
+    22000+ = Windows 11. On macOS: 22631, or `EASY_TWEAKS_FAKE_BUILD=19045 npm run tauri dev`.
+  - On macOS `[fake live] ...` / `[fake explorer] restart` are printed instead.
+- Tests in lib.rs (`cargo test`, run on Mac and in CI): tweak table checks, apply/revert
+  cycle on FakeRegistry, version filter. Tests only apply non-`Now` tweaks, so CI never
+  changes real live settings.
 
 ## Next steps
-1. Test the live changes on Windows (CI build): toggle each of the 8 and check it
-   works without signing out.
-2. Admin-only (HKLM) tweaks later, with a clear "needs admin" label.
+1. Test on Windows (CI build): the 8 `Now` tweaks work without signing out; the 7
+   `Explorer` tweaks show up after Restart Explorer (move any that don't to `SignOut`);
+   Start Recommendations is hidden on Windows 10 / Start Suggestions on Windows 11.
+2. Admin-only tweaks later, with a clear "needs admin" label. Includes the Windows 11
+   web-search fix `DisableSearchBoxSuggestions` (HKCU\Software\Policies\... is normally
+   read-only without admin, to confirm; so it belongs here).
 
 ## Rules for tweaks
 - Only include tweaks with real, verifiable effects. No inflated claims like

@@ -1,4 +1,5 @@
 mod backups;
+mod explorer;
 mod live;
 mod registry;
 mod stats;
@@ -36,6 +37,24 @@ struct Setting {
     default: Option<Value>, // the Windows default. None = doesn't exist on a fresh install
 }
 
+// When a change becomes visible
+#[derive(Clone, Copy)]
+enum Effect {
+    Now(Live), // right away (live.rs pushes it into the running session)
+    Explorer,  // after Explorer restarts (the toast offers a button) or a PC restart
+    SignOut,   // after signing out or restarting the PC
+}
+use Effect::{Explorer, Now, SignOut};
+
+// Which Windows versions a tweak does something on
+#[derive(Clone, Copy, PartialEq)]
+enum Version {
+    Any,
+    Win10, // builds below 22000
+    Win11, // builds 22000 and up
+}
+use Version::{Any, Win10, Win11};
+
 // One tweak = a registry key + the values it sets
 struct Tweak {
     id: &'static str,
@@ -45,7 +64,8 @@ struct Tweak {
     description: &'static str,
     key: &'static str,
     values: &'static [Setting],
-    live: Option<Live>, // Some = can take effect right away (see live.rs), None = after sign-out
+    effect: Effect,
+    windows: Version,
 }
 
 const TWEAKS: &[Tweak] = &[
@@ -62,7 +82,8 @@ const TWEAKS: &[Tweak] = &[
             Setting { name: "MouseThreshold1", on: Sz("0"), default: Some(Sz("6")) },
             Setting { name: "MouseThreshold2", on: Sz("0"), default: Some(Sz("10")) },
         ],
-        live: Some(Live::Mouse),
+        effect: Now(Live::Mouse),
+        windows: Any,
     },
     Tweak {
         id: "mouse_hover_fast",
@@ -72,7 +93,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Apps that react to the cursor resting on something do so after 100 ms instead of 400 ms",
         key: r"Control Panel\Mouse",
         values: &[Setting { name: "MouseHoverTime", on: Sz("100"), default: Some(Sz("400")) }], // milliseconds
-        live: Some(Live::HoverTime),
+        effect: Now(Live::HoverTime),
+        windows: Any,
     },
     // The 3 accessibility "Flags" values are bit fields.
     // Bit 0x4 = "the keyboard shortcut is active". Each tweak clears only that bit.
@@ -85,7 +107,8 @@ const TWEAKS: &[Tweak] = &[
         key: r"Control Panel\Accessibility\StickyKeys",
         // 510 = 0x1FE -> 506 = 0x1FA
         values: &[Setting { name: "Flags", on: Sz("506"), default: Some(Sz("510")) }],
-        live: Some(Live::StickyKeys),
+        effect: Now(Live::StickyKeys),
+        windows: Any,
     },
     Tweak {
         id: "filter_keys_shortcut_off",
@@ -96,7 +119,8 @@ const TWEAKS: &[Tweak] = &[
         key: r"Control Panel\Accessibility\Keyboard Response",
         // 126 = 0x7E -> 122 = 0x7A
         values: &[Setting { name: "Flags", on: Sz("122"), default: Some(Sz("126")) }],
-        live: Some(Live::FilterKeys),
+        effect: Now(Live::FilterKeys),
+        windows: Any,
     },
     Tweak {
         id: "toggle_keys_shortcut_off",
@@ -107,7 +131,8 @@ const TWEAKS: &[Tweak] = &[
         key: r"Control Panel\Accessibility\ToggleKeys",
         // 62 = 0x3E -> 58 = 0x3A
         values: &[Setting { name: "Flags", on: Sz("58"), default: Some(Sz("62")) }],
-        live: Some(Live::ToggleKeys),
+        effect: Now(Live::ToggleKeys),
+        windows: Any,
     },
     Tweak {
         id: "narrator_hotkey_off",
@@ -117,7 +142,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Win + Ctrl + Enter no longer starts Narrator by accident",
         key: r"Software\Microsoft\Narrator\NoRoam",
         values: &[Setting { name: "WinEnterLaunchEnabled", on: Dword(0), default: None }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "keyboard_delay_min",
@@ -128,7 +154,8 @@ const TWEAKS: &[Tweak] = &[
         key: r"Control Panel\Keyboard",
         // scale 0-3 (0 = ~250 ms, 3 = ~1 s)
         values: &[Setting { name: "KeyboardDelay", on: Sz("0"), default: Some(Sz("1")) }],
-        live: Some(Live::KeyboardDelay),
+        effect: Now(Live::KeyboardDelay),
+        windows: Any,
     },
     // ───────────── Visual ─────────────
     Tweak {
@@ -139,7 +166,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Windows minimize and maximize instantly, without the zoom animation",
         key: r"Control Panel\Desktop\WindowMetrics",
         values: &[Setting { name: "MinAnimate", on: Sz("0"), default: Some(Sz("1")) }],
-        live: Some(Live::MinAnimate),
+        effect: Now(Live::MinAnimate),
+        windows: Any,
     },
     Tweak {
         id: "transparency_off",
@@ -149,7 +177,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Taskbar, Start and Settings use solid colors instead of see-through blur",
         key: r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
         values: &[Setting { name: "EnableTransparency", on: Dword(0), default: Some(Dword(1)) }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "aero_peek_off",
@@ -159,7 +188,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Hovering the far corner of the taskbar no longer makes all windows see-through",
         key: r"Software\Microsoft\Windows\DWM",
         values: &[Setting { name: "EnableAeroPeek", on: Dword(0), default: Some(Dword(1)) }],
-        live: None,
+        effect: Explorer,
+        windows: Any,
     },
     Tweak {
         id: "menu_delay_off",
@@ -170,7 +200,8 @@ const TWEAKS: &[Tweak] = &[
         key: r"Control Panel\Desktop",
         // milliseconds
         values: &[Setting { name: "MenuShowDelay", on: Sz("0"), default: Some(Sz("400")) }],
-        live: Some(Live::MenuDelay),
+        effect: Now(Live::MenuDelay),
+        windows: Any,
     },
     Tweak {
         id: "startup_delay_off",
@@ -180,7 +211,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Startup apps launch right after sign-in instead of after Windows' built-in delay",
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize",
         values: &[Setting { name: "StartupDelayInMSec", on: Dword(0), default: None }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     // ───────────── Windows ─────────────
     // Most Explorer settings live in the same key
@@ -192,7 +224,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Removes the search box from the taskbar. Press Win and type to search, as before",
         key: r"Software\Microsoft\Windows\CurrentVersion\Search",
         values: &[Setting { name: "SearchboxTaskbarMode", on: Dword(0), default: None }],
-        live: None,
+        effect: Explorer,
+        windows: Any,
     },
     Tweak {
         id: "task_view_button_off",
@@ -202,7 +235,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Removes the Task View button from the taskbar. Win + Tab still works",
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
         values: &[Setting { name: "ShowTaskViewButton", on: Dword(0), default: None }],
-        live: None,
+        effect: Explorer,
+        windows: Any,
     },
     Tweak {
         id: "show_file_extensions",
@@ -213,7 +247,8 @@ const TWEAKS: &[Tweak] = &[
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
         // 1 = hide, 0 = show
         values: &[Setting { name: "HideFileExt", on: Dword(0), default: Some(Dword(1)) }],
-        live: None,
+        effect: Explorer,
+        windows: Any,
     },
     Tweak {
         id: "show_hidden_files",
@@ -224,7 +259,8 @@ const TWEAKS: &[Tweak] = &[
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
         // 1 = show, 2 = hide
         values: &[Setting { name: "Hidden", on: Dword(1), default: Some(Dword(2)) }],
-        live: None,
+        effect: Explorer,
+        windows: Any,
     },
     Tweak {
         id: "snap_assist_off",
@@ -234,7 +270,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Snapping a window to a side no longer suggests windows to fill the other side",
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
         values: &[Setting { name: "SnapAssist", on: Dword(0), default: None }],
-        live: None,
+        effect: Explorer,
+        windows: Any,
     },
     Tweak {
         id: "aero_shake_off",
@@ -244,7 +281,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Shaking a window by its title bar no longer minimizes all others (already off by default on Windows 11)",
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
         values: &[Setting { name: "DisallowShaking", on: Dword(1), default: None }],
-        live: None,
+        effect: Explorer,
+        windows: Any,
     },
     Tweak {
         id: "recent_files_off",
@@ -254,7 +292,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Start, Jump Lists and File Explorer stop listing recently opened files",
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
         values: &[Setting { name: "Start_TrackDocs", on: Dword(0), default: None }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "app_tracking_off",
@@ -264,7 +303,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Windows stops counting which apps you open, so Start shows no \"Most used\" list",
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
         values: &[Setting { name: "Start_TrackProgs", on: Dword(0), default: None }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     // ───────────── Debloat ─────────────
     // "SubscribedContent-<number>Enabled" are the switches behind
@@ -280,7 +320,8 @@ const TWEAKS: &[Tweak] = &[
             Setting { name: "SubscribedContent-338388Enabled", on: Dword(0), default: Some(Dword(1)) },
             Setting { name: "SystemPaneSuggestionsEnabled", on: Dword(0), default: Some(Dword(1)) },
         ],
-        live: None,
+        effect: SignOut,
+        windows: Win10,
     },
     Tweak {
         id: "start_recommendations_off",
@@ -290,7 +331,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Start no longer recommends tips, shortcuts and new apps (Windows 11)",
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
         values: &[Setting { name: "Start_IrisRecommendations", on: Dword(0), default: None }],
-        live: None,
+        effect: SignOut,
+        windows: Win11,
     },
     Tweak {
         id: "settings_suggestions_off",
@@ -304,7 +346,8 @@ const TWEAKS: &[Tweak] = &[
             Setting { name: "SubscribedContent-353694Enabled", on: Dword(0), default: Some(Dword(1)) },
             Setting { name: "SubscribedContent-353696Enabled", on: Dword(0), default: Some(Dword(1)) },
         ],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "windows_tips_off",
@@ -314,7 +357,8 @@ const TWEAKS: &[Tweak] = &[
         description: "No more \"tips and suggestions\" notifications while using Windows",
         key: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
         values: &[Setting { name: "SubscribedContent-338389Enabled", on: Dword(0), default: Some(Dword(1)) }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "lock_screen_tips_off",
@@ -327,7 +371,8 @@ const TWEAKS: &[Tweak] = &[
             Setting { name: "RotatingLockScreenOverlayEnabled", on: Dword(0), default: Some(Dword(1)) },
             Setting { name: "SubscribedContent-338387Enabled", on: Dword(0), default: Some(Dword(1)) },
         ],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "silent_installs_off",
@@ -337,7 +382,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Windows stops installing suggested apps in the background (doesn't remove ones already installed)",
         key: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
         values: &[Setting { name: "SilentInstalledAppsEnabled", on: Dword(0), default: Some(Dword(1)) }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "bing_search_off",
@@ -348,7 +394,8 @@ const TWEAKS: &[Tweak] = &[
         key: r"Software\Microsoft\Windows\CurrentVersion\Search",
         // missing = web results on
         values: &[Setting { name: "BingSearchEnabled", on: Dword(0), default: None }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "advertising_id_off",
@@ -358,7 +405,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Apps can no longer use your advertising ID to show personalized ads",
         key: r"Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo",
         values: &[Setting { name: "Enabled", on: Dword(0), default: Some(Dword(1)) }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "tailored_experiences_off",
@@ -368,7 +416,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Microsoft stops using your diagnostic data for personalized tips and ads",
         key: r"Software\Microsoft\Windows\CurrentVersion\Privacy",
         values: &[Setting { name: "TailoredExperiencesWithDiagnosticDataEnabled", on: Dword(0), default: Some(Dword(1)) }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "feedback_prompts_off",
@@ -378,7 +427,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Windows stops asking you for feedback (Feedback frequency: Never)",
         key: r"Software\Microsoft\Siuf\Rules",
         values: &[Setting { name: "NumberOfSIUFInPeriod", on: Dword(0), default: None }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "game_dvr_master_off",
@@ -388,7 +438,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Turns off Game DVR, Windows' built-in game recording",
         key: r"System\GameConfigStore",
         values: &[Setting { name: "GameDVR_Enabled", on: Dword(0), default: Some(Dword(1)) }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "game_dvr_off", // older ID kept on purpose: backups.json is keyed by ID
@@ -399,7 +450,8 @@ const TWEAKS: &[Tweak] = &[
         key: r"Software\Microsoft\Windows\CurrentVersion\GameDVR",
         // doesn't exist until changed in Settings; missing = capture allowed
         values: &[Setting { name: "AppCaptureEnabled", on: Dword(0), default: None }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
     Tweak {
         id: "game_bar_tips_off",
@@ -409,7 +461,8 @@ const TWEAKS: &[Tweak] = &[
         description: "Game Bar no longer shows its tips panel when it opens",
         key: r"Software\Microsoft\GameBar",
         values: &[Setting { name: "ShowStartupPanel", on: Dword(0), default: None }],
-        live: None,
+        effect: SignOut,
+        windows: Any,
     },
 ];
 
@@ -418,6 +471,22 @@ struct AppState {
     registry: Box<dyn Registry>,
     backups: Backups,
     backup_path: PathBuf, // where backups.json lives
+    build: Option<u32>,   // Windows build number; None = unknown -> show every tweak
+}
+
+// Does this tweak do something on this Windows version?
+fn fits(tweak: &Tweak, build: Option<u32>) -> bool {
+    match (tweak.windows, build) {
+        (Any, _) | (_, None) => true,
+        (Win10, Some(b)) => b < 22000,
+        (Win11, Some(b)) => b >= 22000,
+    }
+}
+
+// Shown if it fits this Windows, or if we changed it (so it can always be reverted,
+// e.g. after an upgrade from Windows 10 to 11)
+fn visible(s: &AppState, tweak: &Tweak) -> bool {
+    fits(tweak, s.build) || s.backups.contains_key(tweak.id)
 }
 
 fn find_tweak(id: &str) -> Result<&'static Tweak, String> {
@@ -450,7 +519,7 @@ fn restore(registry: &mut dyn Registry, key: &str, old: &[(String, Option<RegVal
 // (so it works the same after apply and revert). Best effort: the registry is already
 // correct, so if this fails the change still takes effect after sign-out.
 fn push_live(tweak: &Tweak, registry: &dyn Registry) {
-    let Some(live) = tweak.live else { return };
+    let Now(live) = tweak.effect else { return };
     let numbers = tweak
         .values
         .iter()
@@ -474,7 +543,7 @@ struct TweakInfo {
     description: &'static str,
     applied: bool,     // Easy Tweaks turned it on (has a backup) -> toggle on
     already_set: bool, // Windows already has these values, but not from us -> toggle off + note
-    live: bool,        // takes effect right away; false = after sign-out
+    effect: &'static str, // "now" | "explorer" | "signout"
 }
 
 fn info(s: &AppState, tweak: &'static Tweak) -> TweakInfo {
@@ -487,7 +556,11 @@ fn info(s: &AppState, tweak: &'static Tweak) -> TweakInfo {
         description: tweak.description,
         applied: set && ours,
         already_set: set && !ours,
-        live: tweak.live.is_some(),
+        effect: match tweak.effect {
+            Now(_) => "now",
+            Explorer => "explorer",
+            SignOut => "signout",
+        },
     }
 }
 
@@ -496,7 +569,7 @@ fn list_tweaks(page: &str, state: tauri::State<Mutex<AppState>>) -> Vec<TweakInf
     let s = state.lock().unwrap();
     TWEAKS
         .iter()
-        .filter(|t| t.page == page)
+        .filter(|t| t.page == page && visible(&s, t))
         .map(|t| info(&s, t))
         .collect()
 }
@@ -569,9 +642,10 @@ struct TweakSummary {
 #[tauri::command]
 fn tweak_summary(state: tauri::State<Mutex<AppState>>) -> TweakSummary {
     let s = state.lock().unwrap();
+    let shown = TWEAKS.iter().filter(|t| visible(&s, t));
     TweakSummary {
-        applied: TWEAKS.iter().filter(|t| info(&s, t).applied).count(),
-        total: TWEAKS.len(),
+        applied: shown.clone().filter(|t| info(&s, t).applied).count(),
+        total: shown.count(),
     }
 }
 
@@ -593,21 +667,49 @@ fn revert_tweak(id: &str, state: tauri::State<Mutex<AppState>>) -> Result<TweakI
     Ok(info(&s, tweak))
 }
 
+// Restarts explorer.exe. Takes a few seconds, so `async` runs it on a background
+// thread instead of the main one (the window keeps responding meanwhile).
+#[tauri::command(async)]
+fn restart_explorer() -> Result<(), String> {
+    explorer::restart()
+}
+
+// Windows build number, e.g. 19045 (Windows 10 22H2) or 22631 (Windows 11 23H2).
+// sysinfo reads it from HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuildNumber.
+#[cfg(windows)]
+fn windows_build() -> Option<u32> {
+    sysinfo::System::kernel_version()?.parse().ok()
+}
+
+// On macOS: pretend Windows 11, or test Windows 10 with
+// EASY_TWEAKS_FAKE_BUILD=19045 npm run tauri dev
+#[cfg(not(windows))]
+fn windows_build() -> Option<u32> {
+    let fake = std::env::var("EASY_TWEAKS_FAKE_BUILD").ok().and_then(|b| b.parse().ok());
+    Some(fake.unwrap_or(22631))
+}
+
 // Pick the registry at compile time: the real one on Windows, the fake one everywhere else
 #[cfg(windows)]
 fn make_registry() -> Box<dyn Registry> {
     Box::new(windows_registry::WindowsRegistry)
 }
 
-// The fake starts with the Windows defaults of every tweak, like a fresh install
 #[cfg(not(windows))]
 fn make_registry() -> Box<dyn Registry> {
+    Box::new(fake_registry())
+}
+
+// The fake starts with the Windows defaults of every tweak, like a fresh install.
+// Also used by the tests (on Windows too).
+#[cfg(any(not(windows), test))]
+fn fake_registry() -> registry::FakeRegistry {
     let defaults = TWEAKS.iter().flat_map(|t| {
         t.values
             .iter()
             .filter_map(move |v| Some((t.key, v.name, v.default.as_ref()?.to_reg())))
     });
-    Box::new(registry::FakeRegistry::new(defaults))
+    registry::FakeRegistry::new(defaults)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -620,10 +722,13 @@ pub fn run() {
         .setup(|app| {
             let backup_path = app.path().app_data_dir()?.join("backups.json");
             println!("[backups] using {}", backup_path.display());
+            let build = windows_build();
+            println!("[windows] build {:?}", build);
             let state = AppState {
                 registry: make_registry(),
                 backups: backups::load(&backup_path),
                 backup_path,
+                build,
             };
             app.manage(Mutex::new(state));
             Ok(())
@@ -633,9 +738,90 @@ pub fn run() {
             apply_tweak,
             revert_tweak,
             tweak_summary,
+            restart_explorer,
             stats::live_stats,
             stats::system_info
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    // A fresh state with the fake registry and its own backups.json in the temp folder
+    fn state(test: &str, build: Option<u32>) -> AppState {
+        let backup_path = std::env::temp_dir().join(format!("easy-tweaks-{}-{}.json", test, std::process::id()));
+        let _ = std::fs::remove_file(&backup_path);
+        AppState { registry: Box::new(fake_registry()), backups: Backups::new(), backup_path, build }
+    }
+
+    #[test]
+    fn tweak_table_is_valid() {
+        let mut ids = HashSet::new();
+        for t in TWEAKS {
+            assert!(ids.insert(t.id), "duplicate id {}", t.id);
+            assert!(["input", "visual", "windows", "debloat"].contains(&t.page), "{}: bad page", t.id);
+            // backups.json stores values by name, so names must be unique within a tweak
+            let names: HashSet<_> = t.values.iter().map(|v| v.name).collect();
+            assert_eq!(names.len(), t.values.len(), "{}: duplicate value name", t.id);
+            // Live tweaks: push_live needs the right number of values, all numbers
+            if let Now(live) = t.effect {
+                let expected = if matches!(live, Live::Mouse) { 3 } else { 1 };
+                assert_eq!(t.values.len(), expected, "{}: wrong value count for {:?}", t.id, live);
+                for v in t.values {
+                    for value in [Some(&v.on), v.default.as_ref()].into_iter().flatten() {
+                        if let Sz(text) = value {
+                            assert!(text.parse::<u32>().is_ok(), "{}: {} is not a number", t.id, v.name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Uses a tweak that isn't `Now`, so on Windows CI no real setting is pushed
+    #[test]
+    fn apply_then_revert_restores_old_values() {
+        let mut s = state("cycle", None);
+        let ext = find_tweak("show_file_extensions").unwrap(); // default exists: HideFileExt = 1
+        let bing = find_tweak("bing_search_off").unwrap(); // default missing
+
+        apply(&mut s, ext).unwrap();
+        apply(&mut s, bing).unwrap();
+        assert!(info(&s, ext).applied && info(&s, bing).applied);
+        assert_eq!(s.registry.read(ext.key, "HideFileExt"), Ok(Some(RegValue::Dword(0))));
+
+        revert(&mut s, ext).unwrap();
+        revert(&mut s, bing).unwrap();
+        assert_eq!(s.registry.read(ext.key, "HideFileExt"), Ok(Some(RegValue::Dword(1))));
+        assert_eq!(s.registry.read(bing.key, "BingSearchEnabled"), Ok(None)); // deleted again
+        assert!(s.backups.is_empty());
+        let _ = std::fs::remove_file(&s.backup_path);
+    }
+
+    #[test]
+    fn version_only_tweaks_are_hidden_on_the_other_version() {
+        let win10 = find_tweak("start_suggestions_off").unwrap();
+        let win11 = find_tweak("start_recommendations_off").unwrap();
+
+        let s = state("win11", Some(22631));
+        assert!(!visible(&s, win10) && visible(&s, win11));
+        let s = state("win10", Some(19045));
+        assert!(visible(&s, win10) && !visible(&s, win11));
+        let s = state("unknown", None);
+        assert!(visible(&s, win10) && visible(&s, win11));
+    }
+
+    // Applied on Windows 10, then upgraded to 11: still shown, so it can be reverted
+    #[test]
+    fn backed_up_tweak_stays_visible() {
+        let win10 = find_tweak("start_suggestions_off").unwrap();
+        let mut s = state("upgrade", Some(19045));
+        apply(&mut s, win10).unwrap();
+        s.build = Some(22631);
+        assert!(visible(&s, win10));
+        let _ = std::fs::remove_file(&s.backup_path);
+    }
 }
