@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
@@ -122,9 +122,11 @@ function Dashboard() {
   );
 }
 
-// Progress of one Apply all / Revert all run, shown in the Toast
+// Progress of one run (a single toggle, or Apply all / Revert all), shown in the Toast
 type Report = {
-  apply: boolean; // Apply all (true) or Revert all (false)
+  run: number; // new number per run, so each run gets a fresh toast (and countdown)
+  name?: string; // set for a single toggle: the toast shows the tweak's name
+  apply: boolean; // apply (true) or revert (false)
   total: number; // how many tweaks this run changes
   done: number; // finished so far, ok or failed
   failed: number;
@@ -134,14 +136,15 @@ type Report = {
 
 const plural = (n: number) => `${n} tweak${n === 1 ? "" : "s"}`;
 
-// The card in the bottom-right corner. While running: spinner + progress bar.
+// The card in the bottom-right corner. While running (Apply all / Revert all): spinner + progress bar.
 // When finished: check mark + summary, then it closes itself after 5 s
 // (the shrinking bar is a CSS animation; onAnimationEnd closes the toast,
 // and hovering pauses it, so you get time to read).
 function Toast({ report, onClose }: { report: Report; onClose: () => void }) {
-  const { apply, total, done, failed, live, finished } = report;
+  const { name, apply, total, done, failed, live, finished } = report;
   const ok = done - failed;
-  const later = ok - live;
+  const later = ok - live; // need a restart to take full effect
+  const verb = apply ? "applied" : "reverted";
 
   let title: string;
   let sub: string;
@@ -149,14 +152,14 @@ function Toast({ report, onClose }: { report: Report; onClose: () => void }) {
     title = `${apply ? "Applying" : "Reverting"} ${plural(total)}…`;
     sub = `${done} of ${total} done`;
   } else if (failed > 0) {
-    title = `${ok} of ${total} ${apply ? "applied" : "reverted"}`;
-    sub = `${failed} failed, see the message in ${failed === 1 ? "its row" : "their rows"}`;
+    title = name ? `Couldn't ${apply ? "apply" : "revert"} ${name}` : `${ok} of ${total} ${verb}`;
+    sub = `See the message in ${failed === 1 ? "its row" : "their rows"}`;
   } else {
-    title = `${plural(ok)} ${apply ? "applied" : "reverted"}`;
+    title = name ? `${name} ${verb}` : `${plural(ok)} ${verb}`;
     sub =
-      later === 0 ? "In effect right now"
-      : live === 0 ? "Takes effect after you sign out"
-      : `${live} in effect now · ${later} after you sign out`;
+      later === 0 ? "All changes are active now"
+      : apply ? "Please restart your PC to see the full changes"
+      : "Please restart your PC to fully undo the changes";
   }
 
   const icon = !finished ? "spinner" : failed > 0 ? "warn" : "ok";
@@ -194,6 +197,7 @@ function TweakList({ page }: { page: Page }) {
   const [errors, setErrors] = useState<Record<string, string>>({}); // tweak id -> error
   const [busy, setBusy] = useState(false); // true while Apply all / Revert all runs
   const [report, setReport] = useState<Report | null>(null); // null = no toast
+  const runs = useRef(0); // counts runs; a ref because changing it shouldn't re-render
 
   useEffect(() => {
     invoke<TweakInfo[]>("list_tweaks", { page }).then(setTweaks);
@@ -213,12 +217,27 @@ function TweakList({ page }: { page: Page }) {
     }
   }
 
+  // A single row's toggle: same as toggle(), plus a toast with the result
+  async function toggleOne(t: TweakInfo) {
+    const updated = await toggle(t);
+    setReport({
+      run: ++runs.current,
+      name: t.name,
+      apply: !t.applied,
+      total: 1,
+      done: 1,
+      failed: updated ? 0 : 1,
+      live: updated?.live ? 1 : 0,
+      finished: true,
+    });
+  }
+
   // One after another (not all at once), so each row updates as it finishes.
   // A failing tweak shows its error in its own row and the rest keep going.
   // The toast follows along: `r` is updated after every tweak.
   async function toggleAll(apply: boolean) {
     const todo = tweaks.filter((t) => t.applied !== apply);
-    let r: Report = { apply, total: todo.length, done: 0, failed: 0, live: 0, finished: false };
+    let r: Report = { run: ++runs.current, apply, total: todo.length, done: 0, failed: 0, live: 0, finished: false };
     setReport(r);
     setBusy(true);
     for (const t of todo) {
@@ -260,11 +279,11 @@ function TweakList({ page }: { page: Page }) {
           {tweaks
             .filter((t) => t.section === section)
             .map((t) => (
-              <TweakRow key={t.id} tweak={t} error={errors[t.id]} disabled={busy} onToggle={() => toggle(t)} />
+              <TweakRow key={t.id} tweak={t} error={errors[t.id]} disabled={busy} onToggle={() => toggleOne(t)} />
             ))}
         </section>
       ))}
-      {report && <Toast report={report} onClose={() => setReport(null)} />}
+      {report && <Toast key={report.run} report={report} onClose={() => setReport(null)} />}
     </>
   );
 }

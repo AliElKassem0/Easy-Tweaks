@@ -57,9 +57,10 @@ So the registry is behind a trait:
 - `src/App.tsx`: sidebar (Dashboard, Input, Visual, Windows, Debloat) using `useState`.
   `TweakList` owns the page's tweaks (state lifted up): sections, "X of N active",
   Apply all / Revert all (sequential, per-row errors). `TweakRow` only displays.
-  Apply all / Revert all show a `Toast` (bottom-right): spinner + progress while running,
-  then "X tweaks applied" + how many are live vs. after sign-out (`TweakInfo.live`),
-  or a warning if some failed. Closes after 5 s (CSS countdown, paused on hover).
+  Every toggle and Apply all / Revert all show a `Toast` (bottom-right): spinner + progress
+  while Apply all runs, then "<name> applied" / "X tweaks applied" + "Please restart your PC
+  to see the full changes" (only if a tweak isn't `TweakInfo.live`), or a warning if some
+  failed. Closes after 5 s (CSS countdown, paused on hover). `key={report.run}` = new toast per run.
   Dashboard: CPU, RAM, active tweaks (`tweak_summary`) tiles.
 - `src/App.css`: "Crimson" theme using CSS variables in `:root`
   (`--bg`, `--panel`, `--line`, `--hover`, `--accent`, `--text`, `--muted`).
