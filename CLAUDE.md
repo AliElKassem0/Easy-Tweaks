@@ -29,7 +29,15 @@ So the registry is behind a trait:
 ## Current state
 - `src-tauri/src/lib.rs`:
   - `const TWEAKS: &[Tweak]` with fields id, page, name, description, key, values.
-    All current tweaks are HKCU. Values are typed: `Sz("0")` (REG_SZ) or `Dword(0)` (REG_DWORD).
+    All current tweaks are HKCU. Each value is a `Setting { name, on, default }`, typed as
+    `Sz("0")` (REG_SZ) or `Dword(0)` (REG_DWORD); `default: None` = missing on a fresh install.
+  - `apply()` / `revert()` hold the logic (take `&mut AppState`, testable without Tauri);
+    the `apply_tweak` / `revert_tweak` commands just lock the state and call them.
+  - Toggle is on only when Easy Tweaks applied it (`applied` = backup exists + values match).
+    Values already in Windows but not from us: toggle off + "Already set on this PC" note
+    (`already_set`). Apply/revert return the new `TweakInfo` so the row shows Rust's state.
+  - Revert uses the backup; if there is none (backups.json deleted), the Windows defaults.
+  - `FakeRegistry::new(defaults)` is seeded from the `default`s in TWEAKS.
   - `registry.rs` has `enum RegValue { Sz(String), Dword(u32) }` (serde `untagged`, so
     backups.json stores `"400"` / `1` / `null`). The const-friendly `Value` in lib.rs
     converts with `to_reg()`.
@@ -38,6 +46,12 @@ So the registry is behind a trait:
   - Commands: `list_tweaks(page)` (returns id, name, description, applied),
     `apply_tweak(id)` (backs up old values only the first time, then writes),
     `revert_tweak(id)` (restores the backup, or deletes the value if it didn't exist before).
+- Tested on the Windows PC: works, but that PC already had all tweaks set
+  (shows "Already set on this PC"). Still to test on a clean laptop.
+- `src-tauri/src/stats.rs`: Dashboard data via `sysinfo` 0.39 (feature `system` only).
+  `Stats(Mutex<System>)` is managed by Tauri (CPU usage = diff between refreshes).
+  Commands: `live_stats` (cpu %, ram used/total in bytes), `system_info` (CPU name, threads, OS).
+  Dashboard polls `live_stats` every 1 s; GB = 1024³ like Task Manager.
 - `src/App.tsx`: sidebar (Dashboard, Tweaks, Input, Debloat) using `useState`.
   Each page calls `list_tweaks` and renders `TweakRow` components with a toggle.
 - `src/App.css`: "Crimson" theme using CSS variables in `:root`
@@ -51,11 +65,10 @@ So the registry is behind a trait:
 - One `key` per tweak. A tweak that needs values under two keys needs a refactor first.
 
 ## Next steps
-1. Push to GitHub, run the workflow, test all 9 tweaks on the Windows PC
+1. Commit + push (tweak states, revert fallback, dashboard), test all 9 tweaks on a clean laptop
    (check Bing search on Windows 11; remove it if Windows ignores it).
 2. Apply settings immediately (`SystemParametersInfo`) instead of after sign-out.
 3. Admin-only (HKLM) tweaks later, with a clear "needs admin" label.
-4. Dashboard: live CPU/RAM stats.
 
 ## Rules for tweaks
 - Only include tweaks with real, verifiable effects. No inflated claims like
