@@ -42,7 +42,7 @@ Plain registry values, no admin, revertible from backups.json.
 
 ## Order
 0. ~~Commit + push toggle fix and Dashboard~~
-1. HKCU toggles above + page structure (Visual / Windows pages, sections, Apply all / Revert all, "X of N active", active count on Dashboard)
+1. ~~HKCU toggles above + page structure (Visual / Windows pages, sections, Apply all / Revert all, "X of N active", active count on Dashboard)~~
 2. Engine: tweaks that write to more than one key, apply now (`SystemParametersInfo`) instead of after sign-out, Restart Explorer button, hide tweaks that don't apply to the running Windows version (10 vs 11)
 3. Sliders
 4. Dashboard extras (uptime, disk, network, history chart, quick actions), Storage page, custom title bar
