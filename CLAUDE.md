@@ -47,7 +47,9 @@ So the registry is behind a trait:
     `apply_tweak(id)` (backs up old values only the first time, then writes),
     `revert_tweak(id)` (restores the backup, or deletes the value if it didn't exist before).
 - Tested on the Windows PC: works, but that PC already had all tweaks set
-  (shows "Already set on this PC"). Still to test on a clean laptop.
+  (shows "Already set on this PC"). Tested on a clean laptop: all 33 tweaks
+  write their values, and revert restores them. Bing search and Peek are kept even if
+  Windows 11 may ignore them (decision: they still help on Windows 10).
 - `src-tauri/src/stats.rs`: Dashboard data via `sysinfo` 0.39 (feature `system` only).
   `Stats(Mutex<System>)` is managed by Tauri (CPU usage = diff between refreshes).
   Commands: `live_stats` (cpu %, ram used/total in bytes), `system_info` (CPU name, threads, OS).
@@ -69,10 +71,8 @@ So the registry is behind a trait:
 - One `key` per tweak. A tweak that needs values under two keys needs a refactor first.
 
 ## Next steps
-1. Test on a clean laptop (all 33 tweaks; Bing search and Peek on Windows 11)
-   (check Bing search on Windows 11; remove it if Windows ignores it).
-2. Apply settings immediately (`SystemParametersInfo`) instead of after sign-out.
-3. Admin-only (HKLM) tweaks later, with a clear "needs admin" label.
+1. Apply settings immediately (`SystemParametersInfo`) instead of after sign-out.
+2. Admin-only (HKLM) tweaks later, with a clear "needs admin" label.
 
 ## Rules for tweaks
 - Only include tweaks with real, verifiable effects. No inflated claims like
@@ -84,4 +84,4 @@ So the registry is behind a trait:
 - Answer in English, short and concrete. Show the actual values or code
   instead of abstract explanations.
 - After each change, explain what changed and why, step by step.
-- Let me write small parts myself (like adding new tweaks) so I learn.
+- Write the code yourself; don't hand me tasks. Still explain what changed so I learn.

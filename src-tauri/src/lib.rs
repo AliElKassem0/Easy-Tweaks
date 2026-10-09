@@ -315,7 +315,7 @@ const TWEAKS: &[Tweak] = &[
         page: "debloat",
         section: "Suggestions & ads",
         name: "Disable Web Results in Start Search",
-        description: "Start menu search shows only local results, no Bing web results",
+        description: "Start menu search shows only local results, no Bing web results (mainly Windows 10; newer Windows 11 builds may ignore it)",
         key: r"Software\Microsoft\Windows\CurrentVersion\Search",
         // missing = web results on
         values: &[Setting { name: "BingSearchEnabled", on: Dword(0), default: None }],
