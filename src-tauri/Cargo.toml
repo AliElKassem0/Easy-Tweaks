@@ -27,6 +27,8 @@ sysinfo = { version = "0.39.6", default-features = false, features = ["system"] 
 # Only downloaded and compiled when building for Windows
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
+# Raw Windows API, for SystemParametersInfo (live.rs). Same version winreg already uses.
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Accessibility"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

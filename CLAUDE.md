@@ -57,6 +57,9 @@ So the registry is behind a trait:
 - `src/App.tsx`: sidebar (Dashboard, Input, Visual, Windows, Debloat) using `useState`.
   `TweakList` owns the page's tweaks (state lifted up): sections, "X of N active",
   Apply all / Revert all (sequential, per-row errors). `TweakRow` only displays.
+  Apply all / Revert all show a `Toast` (bottom-right): spinner + progress while running,
+  then "X tweaks applied" + how many are live vs. after sign-out (`TweakInfo.live`),
+  or a warning if some failed. Closes after 5 s (CSS countdown, paused on hover).
   Dashboard: CPU, RAM, active tweaks (`tweak_summary`) tiles.
 - `src/App.css`: "Crimson" theme using CSS variables in `:root`
   (`--bg`, `--panel`, `--line`, `--hover`, `--accent`, `--text`, `--muted`).
@@ -69,9 +72,17 @@ So the registry is behind a trait:
   backups.json is keyed by ID (that's why "Disable Game Bar Capture" has id `game_dvr_off`).
   Full triage of planned/dropped tweaks: ROADMAP.md.
 - One `key` per tweak. A tweak that needs values under two keys needs a refactor first.
+- `src-tauri/src/live.rs`: makes 8 tweaks take effect right away via `SystemParametersInfo`
+  (`windows-sys` 0.61): mouse accel, hover time, sticky/filter/toggle keys shortcut,
+  keyboard delay, window animations, menu delay. A tweak opts in with `live: Some(Live::X)`.
+  `push_live()` in lib.rs runs after apply and revert, reads the values back from the
+  registry and pushes them; best effort (failure only prints, sign-out still works).
+  Accessibility tweaks only change bit 0x4 of the live Flags. The other 25 tweaks still
+  need sign-out or an Explorer restart. On macOS it prints `[fake live] ...`.
 
 ## Next steps
-1. Apply settings immediately (`SystemParametersInfo`) instead of after sign-out.
+1. Test the live changes on Windows (CI build): toggle each of the 8 and check it
+   works without signing out.
 2. Admin-only (HKLM) tweaks later, with a clear "needs admin" label.
 
 ## Rules for tweaks

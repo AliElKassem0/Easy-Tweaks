@@ -20,6 +20,7 @@ type TweakInfo = {
   description: string;
   applied: boolean; // Easy Tweaks turned it on
   already_set: boolean; // Windows already has it, but not from us
+  live: boolean; // takes effect right away; false = after sign-out
 };
 
 // Only displays a tweak. The state lives in TweakList, which tells the row what to show.
@@ -121,34 +122,116 @@ function Dashboard() {
   );
 }
 
+// Progress of one Apply all / Revert all run, shown in the Toast
+type Report = {
+  apply: boolean; // Apply all (true) or Revert all (false)
+  total: number; // how many tweaks this run changes
+  done: number; // finished so far, ok or failed
+  failed: number;
+  live: number; // succeeded and took effect right away
+  finished: boolean;
+};
+
+const plural = (n: number) => `${n} tweak${n === 1 ? "" : "s"}`;
+
+// The card in the bottom-right corner. While running: spinner + progress bar.
+// When finished: check mark + summary, then it closes itself after 5 s
+// (the shrinking bar is a CSS animation; onAnimationEnd closes the toast,
+// and hovering pauses it, so you get time to read).
+function Toast({ report, onClose }: { report: Report; onClose: () => void }) {
+  const { apply, total, done, failed, live, finished } = report;
+  const ok = done - failed;
+  const later = ok - live;
+
+  let title: string;
+  let sub: string;
+  if (!finished) {
+    title = `${apply ? "Applying" : "Reverting"} ${plural(total)}…`;
+    sub = `${done} of ${total} done`;
+  } else if (failed > 0) {
+    title = `${ok} of ${total} ${apply ? "applied" : "reverted"}`;
+    sub = `${failed} failed, see the message in ${failed === 1 ? "its row" : "their rows"}`;
+  } else {
+    title = `${plural(ok)} ${apply ? "applied" : "reverted"}`;
+    sub =
+      later === 0 ? "In effect right now"
+      : live === 0 ? "Takes effect after you sign out"
+      : `${live} in effect now · ${later} after you sign out`;
+  }
+
+  const icon = !finished ? "spinner" : failed > 0 ? "warn" : "ok";
+  return (
+    <div className={`toast ${icon}`} role="status" aria-live="polite">
+      <div className="toast-icon" aria-hidden="true">
+        {icon === "spinner" && (
+          <svg viewBox="0 0 24 24"><circle className="spin" cx="12" cy="12" r="9" /></svg>
+        )}
+        {icon === "ok" && (
+          <svg viewBox="0 0 24 24"><path className="draw" d="M6 12.5l4 4 8-9" /></svg>
+        )}
+        {icon === "warn" && (
+          <svg viewBox="0 0 24 24"><path className="draw" d="M12 6.5v7M12 17.5v.01" /></svg>
+        )}
+      </div>
+      <div className="toast-text">
+        <div className="toast-title">{title}</div>
+        <div className="toast-sub">{sub}</div>
+      </div>
+      <button className="toast-close" onClick={onClose} aria-label="Close">×</button>
+      {/* key: a new element when the run finishes, so the countdown starts fresh */}
+      {finished ? (
+        <div key="timer" className="toast-bar timer" onAnimationEnd={onClose} />
+      ) : (
+        <div key="progress" className="toast-bar" style={{ width: `${(done / total) * 100}%` }} />
+      )}
+    </div>
+  );
+}
+
 // Holds all tweaks of one page: sections, the "X of N active" count and Apply all / Revert all
 function TweakList({ page }: { page: Page }) {
   const [tweaks, setTweaks] = useState<TweakInfo[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({}); // tweak id -> error
   const [busy, setBusy] = useState(false); // true while Apply all / Revert all runs
+  const [report, setReport] = useState<Report | null>(null); // null = no toast
 
   useEffect(() => {
     invoke<TweakInfo[]>("list_tweaks", { page }).then(setTweaks);
   }, [page]);
 
-  // Apply or revert one tweak, then put Rust's answer into the list
-  async function toggle(t: TweakInfo) {
+  // Apply or revert one tweak, then put Rust's answer into the list.
+  // Returns the new state, or null if it failed.
+  async function toggle(t: TweakInfo): Promise<TweakInfo | null> {
     try {
       const updated = await invoke<TweakInfo>(t.applied ? "revert_tweak" : "apply_tweak", { id: t.id });
       setTweaks((list) => list.map((x) => (x.id === updated.id ? updated : x)));
       setErrors(({ [t.id]: _, ...rest }) => rest); // clear this tweak's old error
+      return updated;
     } catch (e) {
       setErrors((errs) => ({ ...errs, [t.id]: String(e) }));
+      return null;
     }
   }
 
   // One after another (not all at once), so each row updates as it finishes.
   // A failing tweak shows its error in its own row and the rest keep going.
+  // The toast follows along: `r` is updated after every tweak.
   async function toggleAll(apply: boolean) {
+    const todo = tweaks.filter((t) => t.applied !== apply);
+    let r: Report = { apply, total: todo.length, done: 0, failed: 0, live: 0, finished: false };
+    setReport(r);
     setBusy(true);
-    for (const t of tweaks.filter((t) => t.applied !== apply)) {
-      await toggle(t);
+    for (const t of todo) {
+      const updated = await toggle(t);
+      r = {
+        ...r,
+        done: r.done + 1,
+        failed: r.failed + (updated ? 0 : 1),
+        live: r.live + (updated?.live ? 1 : 0),
+      };
+      setReport(r);
     }
+    setReport({ ...r, finished: true });
     setBusy(false);
   }
 
@@ -181,6 +264,7 @@ function TweakList({ page }: { page: Page }) {
             ))}
         </section>
       ))}
+      {report && <Toast report={report} onClose={() => setReport(null)} />}
     </>
   );
 }
