@@ -20,7 +20,7 @@ type TweakInfo = {
   description: string;
   applied: boolean; // Easy Tweaks turned it on
   already_set: boolean; // Windows already has it, but not from us
-  live: boolean; // takes effect right away; false = after sign-out
+  effect: "now" | "explorer" | "signout"; // when the change shows up (Effect in lib.rs)
 };
 
 // Only displays a tweak. The state lives in TweakList, which tells the row what to show.
@@ -130,21 +130,50 @@ type Report = {
   total: number; // how many tweaks this run changes
   done: number; // finished so far, ok or failed
   failed: number;
-  live: number; // succeeded and took effect right away
+  explorer: number; // succeeded, shows up after an Explorer restart
+  signout: number; // succeeded, shows up after a PC restart
   finished: boolean;
 };
+
+// Adds one finished tweak (null = it failed) to the report
+function counted(r: Report, updated: TweakInfo | null): Report {
+  return {
+    ...r,
+    done: r.done + 1,
+    failed: r.failed + (updated ? 0 : 1),
+    explorer: r.explorer + (updated?.effect === "explorer" ? 1 : 0),
+    signout: r.signout + (updated?.effect === "signout" ? 1 : 0),
+  };
+}
 
 const plural = (n: number) => `${n} tweak${n === 1 ? "" : "s"}`;
 
 // The card in the bottom-right corner. While running (Apply all / Revert all): spinner + progress bar.
-// When finished: check mark + summary, then it closes itself after 5 s
+// When finished: check mark + summary, then it closes itself
 // (the shrinking bar is a CSS animation; onAnimationEnd closes the toast,
 // and hovering pauses it, so you get time to read).
 function Toast({ report, onClose }: { report: Report; onClose: () => void }) {
-  const { name, apply, total, done, failed, live, finished } = report;
+  const { name, apply, total, done, failed, explorer, signout, finished } = report;
   const ok = done - failed;
-  const later = ok - live; // need a restart to take full effect
   const verb = apply ? "applied" : "reverted";
+
+  // The Restart Explorer button is only offered when it's all that's left to do:
+  // if some tweak needs a PC restart anyway, the button wouldn't finish the job.
+  const [restart, setRestart] = useState<"idle" | "busy" | "done">("idle");
+  const [restartError, setRestartError] = useState("");
+  const offerExplorer = finished && failed === 0 && signout === 0 && explorer > 0;
+
+  async function restartExplorer() {
+    setRestart("busy");
+    setRestartError("");
+    try {
+      await invoke("restart_explorer");
+      setRestart("done");
+    } catch (e) {
+      setRestartError(String(e));
+      setRestart("idle");
+    }
+  }
 
   let title: string;
   let sub: string;
@@ -157,12 +186,13 @@ function Toast({ report, onClose }: { report: Report; onClose: () => void }) {
   } else {
     title = name ? `${name} ${verb}` : `${plural(ok)} ${verb}`;
     sub =
-      later === 0 ? "All changes are active now"
-      : apply ? "Please restart your PC to see the full changes"
-      : "Please restart your PC to fully undo the changes";
+      signout > 0 ? (apply ? "Please restart your PC to see the full changes" : "Please restart your PC to fully undo the changes")
+      : explorer === 0 || restart === "done" ? "All changes are active now"
+      : "Restart Explorer to see the changes now (open folders will close), or restart your PC";
   }
+  if (restartError) sub = restartError;
 
-  const icon = !finished ? "spinner" : failed > 0 ? "warn" : "ok";
+  const icon = !finished ? "spinner" : failed > 0 || restartError ? "warn" : "ok";
   return (
     <div className={`toast ${icon}`} role="status" aria-live="polite">
       <div className="toast-icon" aria-hidden="true">
@@ -179,11 +209,23 @@ function Toast({ report, onClose }: { report: Report; onClose: () => void }) {
       <div className="toast-text">
         <div className="toast-title">{title}</div>
         <div className="toast-sub">{sub}</div>
+        {offerExplorer && restart !== "done" && (
+          <button className="toast-action" onClick={restartExplorer} disabled={restart === "busy"}>
+            {restart === "busy" ? "Restarting Explorer…" : "Restart Explorer"}
+          </button>
+        )}
       </div>
       <button className="toast-close" onClick={onClose} aria-label="Close">×</button>
-      {/* key: a new element when the run finishes, so the countdown starts fresh */}
+      {/* key: a new element whenever the run finishes or the restart state changes,
+          so the countdown starts fresh. Paused while Explorer restarts; 10 s instead
+          of 5 s while the button waits for a click. */}
       {finished ? (
-        <div key="timer" className="toast-bar timer" onAnimationEnd={onClose} />
+        <div
+          key={`timer-${restart}`}
+          className={restart === "busy" ? "toast-bar timer paused" : "toast-bar timer"}
+          style={{ animationDuration: offerExplorer && restart === "idle" ? "10s" : "5s" }}
+          onAnimationEnd={onClose}
+        />
       ) : (
         <div key="progress" className="toast-bar" style={{ width: `${(done / total) * 100}%` }} />
       )}
@@ -220,16 +262,8 @@ function TweakList({ page }: { page: Page }) {
   // A single row's toggle: same as toggle(), plus a toast with the result
   async function toggleOne(t: TweakInfo) {
     const updated = await toggle(t);
-    setReport({
-      run: ++runs.current,
-      name: t.name,
-      apply: !t.applied,
-      total: 1,
-      done: 1,
-      failed: updated ? 0 : 1,
-      live: updated?.live ? 1 : 0,
-      finished: true,
-    });
+    const start: Report = { run: ++runs.current, name: t.name, apply: !t.applied, total: 1, done: 0, failed: 0, explorer: 0, signout: 0, finished: true };
+    setReport(counted(start, updated));
   }
 
   // One after another (not all at once), so each row updates as it finishes.
@@ -237,17 +271,11 @@ function TweakList({ page }: { page: Page }) {
   // The toast follows along: `r` is updated after every tweak.
   async function toggleAll(apply: boolean) {
     const todo = tweaks.filter((t) => t.applied !== apply);
-    let r: Report = { run: ++runs.current, apply, total: todo.length, done: 0, failed: 0, live: 0, finished: false };
+    let r: Report = { run: ++runs.current, apply, total: todo.length, done: 0, failed: 0, explorer: 0, signout: 0, finished: false };
     setReport(r);
     setBusy(true);
     for (const t of todo) {
-      const updated = await toggle(t);
-      r = {
-        ...r,
-        done: r.done + 1,
-        failed: r.failed + (updated ? 0 : 1),
-        live: r.live + (updated?.live ? 1 : 0),
-      };
+      r = counted(r, await toggle(t));
       setReport(r);
     }
     setReport({ ...r, finished: true });
