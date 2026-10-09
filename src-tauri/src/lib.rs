@@ -37,7 +37,8 @@ struct Setting {
 // One tweak = a registry key + the values it sets
 struct Tweak {
     id: &'static str,
-    page: &'static str, // which sidebar page shows it: "tweaks" | "input" | "debloat"
+    page: &'static str,    // which sidebar page shows it: "input" | "visual" | "windows" | "debloat"
+    section: &'static str, // heading it's grouped under on that page
     name: &'static str,
     description: &'static str,
     key: &'static str,
@@ -45,9 +46,11 @@ struct Tweak {
 }
 
 const TWEAKS: &[Tweak] = &[
+    // ───────────── Input ─────────────
     Tweak {
         id: "mouse_accel_off",
         page: "input",
+        section: "Mouse",
         name: "Disable Mouse Acceleration",
         description: "Linear 1:1 cursor movement (turns off \"Enhance pointer precision\")",
         key: r"Control Panel\Mouse",
@@ -57,11 +60,21 @@ const TWEAKS: &[Tweak] = &[
             Setting { name: "MouseThreshold2", on: Sz("0"), default: Some(Sz("10")) },
         ],
     },
+    Tweak {
+        id: "mouse_hover_fast",
+        page: "input",
+        section: "Mouse",
+        name: "Faster Hover Detection",
+        description: "Apps that react to the cursor resting on something do so after 100 ms instead of 400 ms",
+        key: r"Control Panel\Mouse",
+        values: &[Setting { name: "MouseHoverTime", on: Sz("100"), default: Some(Sz("400")) }], // milliseconds
+    },
     // The 3 accessibility "Flags" values are bit fields.
     // Bit 0x4 = "the keyboard shortcut is active". Each tweak clears only that bit.
     Tweak {
         id: "sticky_keys_shortcut_off",
         page: "input",
+        section: "Keyboard",
         name: "Disable Sticky Keys Shortcut",
         description: "Pressing Shift 5 times no longer opens the Sticky Keys popup",
         key: r"Control Panel\Accessibility\StickyKeys",
@@ -71,6 +84,7 @@ const TWEAKS: &[Tweak] = &[
     Tweak {
         id: "filter_keys_shortcut_off",
         page: "input",
+        section: "Keyboard",
         name: "Disable Filter Keys Shortcut",
         description: "Holding right Shift for 8 seconds no longer turns on Filter Keys",
         key: r"Control Panel\Accessibility\Keyboard Response",
@@ -80,6 +94,7 @@ const TWEAKS: &[Tweak] = &[
     Tweak {
         id: "toggle_keys_shortcut_off",
         page: "input",
+        section: "Keyboard",
         name: "Disable Toggle Keys Shortcut",
         description: "Holding Num Lock for 5 seconds no longer turns on Toggle Keys",
         key: r"Control Panel\Accessibility\ToggleKeys",
@@ -87,17 +102,56 @@ const TWEAKS: &[Tweak] = &[
         values: &[Setting { name: "Flags", on: Sz("58"), default: Some(Sz("62")) }],
     },
     Tweak {
+        id: "narrator_hotkey_off",
+        page: "input",
+        section: "Keyboard",
+        name: "Disable Narrator Shortcut",
+        description: "Win + Ctrl + Enter no longer starts Narrator by accident",
+        key: r"Software\Microsoft\Narrator\NoRoam",
+        values: &[Setting { name: "WinEnterLaunchEnabled", on: Dword(0), default: None }],
+    },
+    Tweak {
         id: "keyboard_delay_min",
         page: "input",
+        section: "Keyboard",
         name: "Shortest Key Repeat Delay",
         description: "A held key starts repeating after ~250 ms instead of ~500 ms",
         key: r"Control Panel\Keyboard",
         // scale 0-3 (0 = ~250 ms, 3 = ~1 s)
         values: &[Setting { name: "KeyboardDelay", on: Sz("0"), default: Some(Sz("1")) }],
     },
+    // ───────────── Visual ─────────────
+    Tweak {
+        id: "window_animations_off",
+        page: "visual",
+        section: "Effects",
+        name: "Disable Window Animations",
+        description: "Windows minimize and maximize instantly, without the zoom animation",
+        key: r"Control Panel\Desktop\WindowMetrics",
+        values: &[Setting { name: "MinAnimate", on: Sz("0"), default: Some(Sz("1")) }],
+    },
+    Tweak {
+        id: "transparency_off",
+        page: "visual",
+        section: "Effects",
+        name: "Disable Transparency",
+        description: "Taskbar, Start and Settings use solid colors instead of see-through blur",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        values: &[Setting { name: "EnableTransparency", on: Dword(0), default: Some(Dword(1)) }],
+    },
+    Tweak {
+        id: "aero_peek_off",
+        page: "visual",
+        section: "Effects",
+        name: "Disable Peek",
+        description: "Hovering the far corner of the taskbar no longer makes all windows see-through",
+        key: r"Software\Microsoft\Windows\DWM",
+        values: &[Setting { name: "EnableAeroPeek", on: Dword(0), default: Some(Dword(1)) }],
+    },
     Tweak {
         id: "menu_delay_off",
-        page: "tweaks",
+        page: "visual",
+        section: "Speed",
         name: "Instant Menus",
         description: "Submenus open immediately instead of after a 400 ms hover delay",
         key: r"Control Panel\Desktop",
@@ -105,8 +159,38 @@ const TWEAKS: &[Tweak] = &[
         values: &[Setting { name: "MenuShowDelay", on: Sz("0"), default: Some(Sz("400")) }],
     },
     Tweak {
+        id: "startup_delay_off",
+        page: "visual",
+        section: "Speed",
+        name: "Remove Startup App Delay",
+        description: "Startup apps launch right after sign-in instead of after Windows' built-in delay",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize",
+        values: &[Setting { name: "StartupDelayInMSec", on: Dword(0), default: None }],
+    },
+    // ───────────── Windows ─────────────
+    // Most Explorer settings live in the same key
+    Tweak {
+        id: "taskbar_search_off",
+        page: "windows",
+        section: "Taskbar",
+        name: "Hide Taskbar Search",
+        description: "Removes the search box from the taskbar. Press Win and type to search, as before",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Search",
+        values: &[Setting { name: "SearchboxTaskbarMode", on: Dword(0), default: None }],
+    },
+    Tweak {
+        id: "task_view_button_off",
+        page: "windows",
+        section: "Taskbar",
+        name: "Hide Task View Button",
+        description: "Removes the Task View button from the taskbar. Win + Tab still works",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        values: &[Setting { name: "ShowTaskViewButton", on: Dword(0), default: None }],
+    },
+    Tweak {
         id: "show_file_extensions",
-        page: "tweaks",
+        page: "windows",
+        section: "File Explorer",
         name: "Show File Extensions",
         description: "File Explorer shows .exe, .txt, etc., so files like photo.jpg.exe are easy to spot",
         key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
@@ -114,22 +198,182 @@ const TWEAKS: &[Tweak] = &[
         values: &[Setting { name: "HideFileExt", on: Dword(0), default: Some(Dword(1)) }],
     },
     Tweak {
-        id: "game_dvr_off",
+        id: "show_hidden_files",
+        page: "windows",
+        section: "File Explorer",
+        name: "Show Hidden Files",
+        description: "File Explorer shows hidden files and folders, like AppData",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        // 1 = show, 2 = hide
+        values: &[Setting { name: "Hidden", on: Dword(1), default: Some(Dword(2)) }],
+    },
+    Tweak {
+        id: "snap_assist_off",
+        page: "windows",
+        section: "Windows",
+        name: "Disable Snap Assist",
+        description: "Snapping a window to a side no longer suggests windows to fill the other side",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        values: &[Setting { name: "SnapAssist", on: Dword(0), default: None }],
+    },
+    Tweak {
+        id: "aero_shake_off",
+        page: "windows",
+        section: "Windows",
+        name: "Disable Shake to Minimize",
+        description: "Shaking a window by its title bar no longer minimizes all others (already off by default on Windows 11)",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        values: &[Setting { name: "DisallowShaking", on: Dword(1), default: None }],
+    },
+    Tweak {
+        id: "recent_files_off",
+        page: "windows",
+        section: "Activity history",
+        name: "Don't Track Recent Files",
+        description: "Start, Jump Lists and File Explorer stop listing recently opened files",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        values: &[Setting { name: "Start_TrackDocs", on: Dword(0), default: None }],
+    },
+    Tweak {
+        id: "app_tracking_off",
+        page: "windows",
+        section: "Activity history",
+        name: "Don't Track App Launches",
+        description: "Windows stops counting which apps you open, so Start shows no \"Most used\" list",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        values: &[Setting { name: "Start_TrackProgs", on: Dword(0), default: None }],
+    },
+    // ───────────── Debloat ─────────────
+    // "SubscribedContent-<number>Enabled" are the switches behind
+    // Settings > Privacy > General and Settings > Notifications > Additional settings
+    Tweak {
+        id: "start_suggestions_off",
         page: "debloat",
-        name: "Disable Game DVR Capture",
-        description: "Turns off Xbox Game Bar game capture (recording clips and screenshots)",
-        key: r"Software\Microsoft\Windows\CurrentVersion\GameDVR",
-        // doesn't exist until changed in Settings; missing = capture allowed
-        values: &[Setting { name: "AppCaptureEnabled", on: Dword(0), default: None }],
+        section: "Suggestions & ads",
+        name: "Disable App Suggestions in Start",
+        description: "Start no longer shows promoted apps from the Microsoft Store (Windows 10)",
+        key: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
+        values: &[
+            Setting { name: "SubscribedContent-338388Enabled", on: Dword(0), default: Some(Dword(1)) },
+            Setting { name: "SystemPaneSuggestionsEnabled", on: Dword(0), default: Some(Dword(1)) },
+        ],
+    },
+    Tweak {
+        id: "start_recommendations_off",
+        page: "debloat",
+        section: "Suggestions & ads",
+        name: "Disable Start Recommendations",
+        description: "Start no longer recommends tips, shortcuts and new apps (Windows 11)",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
+        values: &[Setting { name: "Start_IrisRecommendations", on: Dword(0), default: None }],
+    },
+    Tweak {
+        id: "settings_suggestions_off",
+        page: "debloat",
+        section: "Suggestions & ads",
+        name: "Disable Suggestions in Settings",
+        description: "The Settings app no longer shows suggested content",
+        key: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
+        values: &[
+            Setting { name: "SubscribedContent-338393Enabled", on: Dword(0), default: Some(Dword(1)) },
+            Setting { name: "SubscribedContent-353694Enabled", on: Dword(0), default: Some(Dword(1)) },
+            Setting { name: "SubscribedContent-353696Enabled", on: Dword(0), default: Some(Dword(1)) },
+        ],
+    },
+    Tweak {
+        id: "windows_tips_off",
+        page: "debloat",
+        section: "Suggestions & ads",
+        name: "Disable Tips Notifications",
+        description: "No more \"tips and suggestions\" notifications while using Windows",
+        key: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
+        values: &[Setting { name: "SubscribedContent-338389Enabled", on: Dword(0), default: Some(Dword(1)) }],
+    },
+    Tweak {
+        id: "lock_screen_tips_off",
+        page: "debloat",
+        section: "Suggestions & ads",
+        name: "Disable Lock Screen Tips",
+        description: "The lock screen no longer shows fun facts, tips and promotions",
+        key: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
+        values: &[
+            Setting { name: "RotatingLockScreenOverlayEnabled", on: Dword(0), default: Some(Dword(1)) },
+            Setting { name: "SubscribedContent-338387Enabled", on: Dword(0), default: Some(Dword(1)) },
+        ],
+    },
+    Tweak {
+        id: "silent_installs_off",
+        page: "debloat",
+        section: "Suggestions & ads",
+        name: "Stop Silent App Installs",
+        description: "Windows stops installing suggested apps in the background (doesn't remove ones already installed)",
+        key: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
+        values: &[Setting { name: "SilentInstalledAppsEnabled", on: Dword(0), default: Some(Dword(1)) }],
     },
     Tweak {
         id: "bing_search_off",
         page: "debloat",
+        section: "Suggestions & ads",
         name: "Disable Web Results in Start Search",
         description: "Start menu search shows only local results, no Bing web results",
         key: r"Software\Microsoft\Windows\CurrentVersion\Search",
         // missing = web results on
         values: &[Setting { name: "BingSearchEnabled", on: Dword(0), default: None }],
+    },
+    Tweak {
+        id: "advertising_id_off",
+        page: "debloat",
+        section: "Privacy",
+        name: "Disable Advertising ID",
+        description: "Apps can no longer use your advertising ID to show personalized ads",
+        key: r"Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo",
+        values: &[Setting { name: "Enabled", on: Dword(0), default: Some(Dword(1)) }],
+    },
+    Tweak {
+        id: "tailored_experiences_off",
+        page: "debloat",
+        section: "Privacy",
+        name: "Disable Tailored Experiences",
+        description: "Microsoft stops using your diagnostic data for personalized tips and ads",
+        key: r"Software\Microsoft\Windows\CurrentVersion\Privacy",
+        values: &[Setting { name: "TailoredExperiencesWithDiagnosticDataEnabled", on: Dword(0), default: Some(Dword(1)) }],
+    },
+    Tweak {
+        id: "feedback_prompts_off",
+        page: "debloat",
+        section: "Privacy",
+        name: "Disable Feedback Prompts",
+        description: "Windows stops asking you for feedback (Feedback frequency: Never)",
+        key: r"Software\Microsoft\Siuf\Rules",
+        values: &[Setting { name: "NumberOfSIUFInPeriod", on: Dword(0), default: None }],
+    },
+    Tweak {
+        id: "game_dvr_master_off",
+        page: "debloat",
+        section: "Xbox Game Bar",
+        name: "Disable Game DVR",
+        description: "Turns off Game DVR, Windows' built-in game recording",
+        key: r"System\GameConfigStore",
+        values: &[Setting { name: "GameDVR_Enabled", on: Dword(0), default: Some(Dword(1)) }],
+    },
+    Tweak {
+        id: "game_dvr_off", // older ID kept on purpose: backups.json is keyed by ID
+        page: "debloat",
+        section: "Xbox Game Bar",
+        name: "Disable Game Bar Capture",
+        description: "Turns off recording clips and screenshots with Xbox Game Bar",
+        key: r"Software\Microsoft\Windows\CurrentVersion\GameDVR",
+        // doesn't exist until changed in Settings; missing = capture allowed
+        values: &[Setting { name: "AppCaptureEnabled", on: Dword(0), default: None }],
+    },
+    Tweak {
+        id: "game_bar_tips_off",
+        page: "debloat",
+        section: "Xbox Game Bar",
+        name: "Disable Game Bar Tips",
+        description: "Game Bar no longer shows its tips panel when it opens",
+        key: r"Software\Microsoft\GameBar",
+        values: &[Setting { name: "ShowStartupPanel", on: Dword(0), default: None }],
     },
 ];
 
@@ -170,6 +414,7 @@ fn restore(registry: &mut dyn Registry, key: &str, old: &[(String, Option<RegVal
 #[derive(serde::Serialize)]
 struct TweakInfo {
     id: &'static str,
+    section: &'static str,
     name: &'static str,
     description: &'static str,
     applied: bool,     // Easy Tweaks turned it on (has a backup) -> toggle on
@@ -181,6 +426,7 @@ fn info(s: &AppState, tweak: &'static Tweak) -> TweakInfo {
     let ours = s.backups.contains_key(tweak.id);
     TweakInfo {
         id: tweak.id,
+        section: tweak.section,
         name: tweak.name,
         description: tweak.description,
         applied: set && ours,
@@ -252,6 +498,22 @@ fn revert(s: &mut AppState, tweak: &Tweak) -> Result<(), String> {
     Ok(())
 }
 
+// For the Dashboard: how many tweaks Easy Tweaks has turned on
+#[derive(serde::Serialize)]
+struct TweakSummary {
+    applied: usize,
+    total: usize,
+}
+
+#[tauri::command]
+fn tweak_summary(state: tauri::State<Mutex<AppState>>) -> TweakSummary {
+    let s = state.lock().unwrap();
+    TweakSummary {
+        applied: TWEAKS.iter().filter(|t| info(&s, t).applied).count(),
+        total: TWEAKS.len(),
+    }
+}
+
 // The commands React calls. They lock the state, hand over to apply/revert,
 // and return the tweak's new state so the row shows what Rust sees.
 #[tauri::command]
@@ -309,6 +571,7 @@ pub fn run() {
             list_tweaks,
             apply_tweak,
             revert_tweak,
+            tweak_summary,
             stats::live_stats,
             stats::system_info
         ])

@@ -52,20 +52,24 @@ So the registry is behind a trait:
   `Stats(Mutex<System>)` is managed by Tauri (CPU usage = diff between refreshes).
   Commands: `live_stats` (cpu %, ram used/total in bytes), `system_info` (CPU name, threads, OS).
   Dashboard polls `live_stats` every 1 s; GB = 1024³ like Task Manager.
-- `src/App.tsx`: sidebar (Dashboard, Tweaks, Input, Debloat) using `useState`.
-  Each page calls `list_tweaks` and renders `TweakRow` components with a toggle.
+- `src/App.tsx`: sidebar (Dashboard, Input, Visual, Windows, Debloat) using `useState`.
+  `TweakList` owns the page's tweaks (state lifted up): sections, "X of N active",
+  Apply all / Revert all (sequential, per-row errors). `TweakRow` only displays.
+  Dashboard: CPU, RAM, active tweaks (`tweak_summary`) tiles.
 - `src/App.css`: "Crimson" theme using CSS variables in `:root`
   (`--bg`, `--panel`, `--line`, `--hover`, `--accent`, `--text`, `--muted`).
 - `src-tauri/src/backups.rs`: backups are saved to `backups.json` in Tauri's app data
   folder (written before the registry is touched, atomic temp-file + rename) and loaded
   at startup in `.setup()`. A corrupt file is moved to `backups.json.broken`.
 - The apply → backup → revert cycle works and has been tested in the terminal.
-- 9 tweaks: mouse accel, Sticky/Filter/Toggle Keys shortcuts, key repeat delay (Input);
-  menu delay, show file extensions (Tweaks); Game DVR capture, Bing in Start search (Debloat).
+- 33 HKCU tweaks (39 registry values) on 4 pages: Input 7, Visual 5, Windows 8, Debloat 13.
+  Each `Tweak` has a `section` (heading on its page). Tweak IDs must never change:
+  backups.json is keyed by ID (that's why "Disable Game Bar Capture" has id `game_dvr_off`).
+  Full triage of planned/dropped tweaks: ROADMAP.md.
 - One `key` per tweak. A tweak that needs values under two keys needs a refactor first.
 
 ## Next steps
-1. Commit + push (tweak states, revert fallback, dashboard), test all 9 tweaks on a clean laptop
+1. Test on a clean laptop (all 33 tweaks; Bing search and Peek on Windows 11)
    (check Bing search on Windows 11; remove it if Windows ignores it).
 2. Apply settings immediately (`SystemParametersInfo`) instead of after sign-out.
 3. Admin-only (HKLM) tweaks later, with a clear "needs admin" label.

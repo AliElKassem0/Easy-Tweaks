@@ -60,8 +60,9 @@ body {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 14px 16px;
-  margin-top: 20px;
+  margin-top: 10px;
   max-width: 600px;
+  gap: 16px;
 }
 .tweak-name { font-size: 15px; font-weight: 600; }
 .tweak-desc { font-size: 13px; color: var(--muted); margin-top: 2px; }
@@ -94,10 +95,10 @@ body {
 /* Dashboard */
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
   margin-top: 20px;
-  max-width: 600px;
+  max-width: 760px;
 }
 .stat-tile {
   background: var(--panel);
@@ -124,3 +125,34 @@ body {
 }
 
 .content p.sysinfo { font-size: 13px; margin-top: 16px; }
+
+/* Tweak pages */
+.page-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 600px;
+  margin-top: 12px;
+}
+.page-count { flex: 1; font-size: 14px; color: var(--muted); }
+
+.btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: var(--hover); border-color: var(--accent); }
+.btn:disabled, .toggle:disabled { opacity: 0.45; cursor: default; }
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 28px 0 2px;
+}
