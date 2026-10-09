@@ -1,0 +1,91 @@
+:root {
+  --bg:     #110a0b;   /* window background */
+  --panel:  #1a1012;   /* sidebar */
+  --line:   #3a1e22;   /* borders, active item */
+  --hover:  #25161a;   /* hovered sidebar item */
+  --accent: #ff4d5e;   /* logo, toggles, buttons */
+  --text:   #f5e6e8;   /* main text */
+  --muted:  #b0959a;   /* secondary text */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", sans-serif;
+}
+
+.app { display: flex; height: 100vh; }
+
+.sidebar {
+  width: 200px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.logo {
+  font-weight: 700;
+  font-size: 18px;
+  padding: 8px 10px 20px;
+  color: var(--accent);
+}
+
+.nav-item {
+  background: none;
+  border: none;
+  color: var(--muted);
+  text-align: left;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.nav-item:hover  { background: var(--hover); color: var(--text); }
+.nav-item.active { background: var(--line);  color: var(--text); }
+
+.content { flex: 1; padding: 32px; overflow-y: auto; }
+.content h1 { font-size: 28px; margin-bottom: 8px; }
+.content p  { color: var(--muted); }
+
+.tweak-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 20px;
+  max-width: 600px;
+}
+.tweak-name { font-size: 15px; font-weight: 600; }
+.tweak-desc { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+.toggle {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  border: none;
+  background: var(--line);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle.on { background: var(--accent); }
+
+.knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.2s;
+}
+.toggle.on .knob { left: 23px; }
