@@ -38,26 +38,13 @@ pub struct FakeRegistry {
 
 #[cfg_attr(windows, allow(dead_code))]
 impl FakeRegistry {
-    pub fn new() -> Self {
-        use RegValue::{Dword, Sz};
-        let mut data = HashMap::new();
-        // Start with the Windows default values.
-        // Values that don't exist on a fresh Windows install are left out on purpose
-        // (e.g. AppCaptureEnabled), so reverting has to delete them again.
-        let defaults = [
-            (r"Control Panel\Mouse\MouseSpeed", Sz("1".into())),
-            (r"Control Panel\Mouse\MouseThreshold1", Sz("6".into())),
-            (r"Control Panel\Mouse\MouseThreshold2", Sz("10".into())),
-            (r"Control Panel\Accessibility\StickyKeys\Flags", Sz("510".into())),
-            (r"Control Panel\Accessibility\Keyboard Response\Flags", Sz("126".into())),
-            (r"Control Panel\Accessibility\ToggleKeys\Flags", Sz("62".into())),
-            (r"Control Panel\Keyboard\KeyboardDelay", Sz("1".into())),
-            (r"Control Panel\Desktop\MenuShowDelay", Sz("400".into())),
-            (r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\HideFileExt", Dword(1)),
-        ];
-        for (path, value) in defaults {
-            data.insert(path.to_string(), value);
-        }
+    // Starts with the given (key, name, value) list. lib.rs passes the Windows
+    // defaults from TWEAKS, so they're only written down once.
+    pub fn new<'a>(defaults: impl IntoIterator<Item = (&'a str, &'a str, RegValue)>) -> Self {
+        let data = defaults
+            .into_iter()
+            .map(|(key, name, value)| (Self::path(key, name), value))
+            .collect();
         Self { data }
     }
 
