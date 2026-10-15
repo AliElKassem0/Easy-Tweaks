@@ -24,7 +24,7 @@ Which tweaks made it in, and which were dropped as myths or harmful, is document
 
 ## Installing
 
-1. Download `Easy Tweaks_x.y.z_x64-setup.exe` from the [latest release](https://github.com/AliElKassem0/Easy-Tweaks/releases/latest).
+1. Download `Easy.Tweaks_x.y.z_x64-setup.exe` from the [latest release](https://github.com/AliElKassem0/Easy-Tweaks/releases/latest).
 2. Run it. The app isn't code-signed, so Windows SmartScreen will warn you. Click **More info → Run anyway**.
 
 ## Building from source
